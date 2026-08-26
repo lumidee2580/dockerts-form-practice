@@ -6,15 +6,15 @@ import uuid
 from typing import Any
 
 from sqlalchemy import func, select
-from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
 from biodata.models import BioRecord
 
 
-def get_by_id(session: Session, record_id: uuid.UUID) -> BioRecord | None:
+def get_by_id(session: Session, record_id: uuid.UUID | str) -> BioRecord | None:
     """Return the record with ``record_id`` or ``None``."""
-    return session.get(BioRecord, record_id)
+    return session.get(BioRecord, str(record_id))
 
 
 def get_by_idempotency_key(session: Session, key: str) -> BioRecord | None:
@@ -31,9 +31,9 @@ def insert_if_absent(session: Session, values: dict[str, Any]) -> tuple[BioRecor
 
     Returns the stored record and whether this call created it.
     """
-    payload = {"id": uuid.uuid4(), **values}
+    payload = {"id": str(uuid.uuid4()), **values}
     stmt = (
-        pg_insert(BioRecord)
+        sqlite_insert(BioRecord)
         .values(**payload)
         .on_conflict_do_nothing(index_elements=[BioRecord.idempotency_key])
         .returning(BioRecord.id)

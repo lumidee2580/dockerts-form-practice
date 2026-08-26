@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from biodata import service
 from biodata.db import get_session
+from biodata.pdf import render_records
 from biodata.schemas import BioRecordCreate, BioRecordPage, BioRecordRead
 
 router = APIRouter(tags=["bio-records"])
@@ -67,6 +68,25 @@ def list_bio_records(
         total=total,
         limit=limit,
         offset=offset,
+    )
+
+
+@router.get("/bio-records/export.pdf", response_class=Response)
+def export_bio_records(session: SessionDep) -> Response:
+    """Download every stored biodata record as a PDF."""
+    records: list[BioRecordRead] = []
+    offset = 0
+    while True:
+        items, _ = service.list_records(session, limit=100, offset=offset)
+        records.extend(BioRecordRead.model_validate(item) for item in items)
+        if len(items) < 100:
+            break
+        offset += len(items)
+
+    return Response(
+        content=render_records(records),
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'attachment; filename="biodata-records.pdf"'},
     )
 
 

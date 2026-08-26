@@ -17,7 +17,6 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
-from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 SEX_VALUES = ("male", "female", "intersex", "prefer_not_to_say")
@@ -41,10 +40,10 @@ class BioRecord(Base):
         UniqueConstraint("idempotency_key", name="uq_bio_records_idempotency_key"),
         Index("ix_bio_records_created_at", "created_at"),
         CheckConstraint(
-            "char_length(full_name) BETWEEN 1 AND 200",
+            "length(full_name) BETWEEN 1 AND 200",
             name="ck_bio_records_full_name_length",
         ),
-        CheckConstraint("phone IS NULL OR char_length(phone) <= 32", name="ck_bio_records_phone"),
+        CheckConstraint("phone IS NULL OR length(phone) <= 32", name="ck_bio_records_phone"),
         CheckConstraint("date_of_birth < CURRENT_DATE", name="ck_bio_records_dob_past"),
         CheckConstraint(_in_list("sex", SEX_VALUES), name="ck_bio_records_sex"),
         CheckConstraint("height_cm BETWEEN 30 AND 300", name="ck_bio_records_height_cm"),
@@ -54,21 +53,21 @@ class BioRecord(Base):
             name="ck_bio_records_blood_type",
         ),
         CheckConstraint(
-            "allergies IS NULL OR char_length(allergies) <= 2000",
+            "allergies IS NULL OR length(allergies) <= 2000",
             name="ck_bio_records_allergies",
         ),
         CheckConstraint(
-            "medical_notes IS NULL OR char_length(medical_notes) <= 5000",
+            "medical_notes IS NULL OR length(medical_notes) <= 5000",
             name="ck_bio_records_medical_notes",
         ),
         CheckConstraint(
-            "country IS NULL OR country ~ '^[A-Z]{2}$'",
+            "country IS NULL OR country GLOB '[A-Z][A-Z]'",
             name="ck_bio_records_country",
         ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
-        PgUUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
     )
     idempotency_key: Mapped[str] = mapped_column(Text, nullable=False)
     request_hash: Mapped[str] = mapped_column(String(64), nullable=False)

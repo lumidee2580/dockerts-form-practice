@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     )
 
     database_url: str = Field(
-        default="postgresql+psycopg://biodata:biodata@localhost:5433/biodata",
+        default="sqlite:////data/biodata.db",
         validation_alias="DATABASE_URL",
     )
     # ``NoDecode`` stops pydantic-settings from JSON-decoding the raw env value

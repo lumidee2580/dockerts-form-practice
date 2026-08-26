@@ -6,6 +6,7 @@ import { parseApiError } from "@/lib/api-errors";
 import type { BioRecord, BioRecordList } from "@/lib/bio";
 
 const PAGE_SIZE = 20;
+const EXPORT_PAGE_SIZE = 100;
 
 type State =
   | { kind: "loading" }
@@ -45,6 +46,68 @@ async function fetchPage(offset: number): Promise<Settled> {
   }
 }
 
+function escapeHtml(value: string): string {
+  return value.replace(
+    /[&<>'"]/g,
+    (character) =>
+      ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        "'": "&#39;",
+        '"': "&quot;",
+      })[character] ?? character,
+  );
+}
+
+async function fetchAllRecords(): Promise<BioRecord[]> {
+  const records: BioRecord[] = [];
+  let offset = 0;
+  let total = 0;
+
+  do {
+    const response = await fetch(
+      `/api/bio-records?limit=${EXPORT_PAGE_SIZE}&offset=${offset}`,
+      { cache: "no-store" },
+    );
+    if (!response.ok) throw new Error("Could not load records for export.");
+    const page = (await response.json()) as BioRecordList;
+    records.push(...page.items);
+    total = page.total;
+    offset += page.items.length;
+    if (page.items.length === 0) break;
+  } while (offset < total);
+
+  return records;
+}
+
+function openPdfView(records: BioRecord[]): void {
+  const printWindow = window.open("", "_blank");
+  if (!printWindow) throw new Error("The PDF window was blocked by the browser.");
+
+  const rows = records
+    .map(
+      (record) => `<tr>
+        <td>${escapeHtml(record.full_name)}</td>
+        <td>${escapeHtml(record.email)}</td>
+        <td>${escapeHtml(record.phone ?? "")}</td>
+        <td>${record.age}</td>
+        <td>${record.bmi.toFixed(1)}</td>
+        <td>${escapeHtml(record.date_of_birth)}</td>
+      </tr>`,
+    )
+    .join("");
+
+  printWindow.document.write(`<!doctype html><html><head><title>Biodata records</title>
+    <style>body{font:14px Arial,sans-serif;color:#172033;margin:32px}h1{font-size:24px;margin:0 0 6px}p{color:#58657a;margin:0 0 24px}table{border-collapse:collapse;width:100%}th,td{border-bottom:1px solid #d7dce5;padding:9px 7px;text-align:left}th{background:#f1f4f8;font-size:12px;text-transform:uppercase;letter-spacing:.04em}@media print{body{margin:12mm}}</style>
+    </head><body><h1>Biodata records</h1><p>${records.length} record${records.length === 1 ? "" : "s"}</p>
+    <table><thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Age</th><th>BMI</th><th>Date of birth</th></tr></thead><tbody>${rows}</tbody></table>
+    </body></html>`);
+  printWindow.document.close();
+  printWindow.focus();
+  printWindow.setTimeout(() => printWindow.print(), 250);
+}
+
 export function RecentSubmissions({ refreshToken }: { refreshToken: number }) {
   /**
    * Paging is stamped with the refresh token it was chosen under, so a
@@ -78,6 +141,17 @@ export function RecentSubmissions({ refreshToken }: { refreshToken: number }) {
   const state: State =
     result && result.key === requestKey ? result.state : { kind: "loading" };
   const load = useCallback(() => setRetryToken((n) => n + 1), []);
+  const [isExporting, setIsExporting] = useState(false);
+  const exportRecords = useCallback(async () => {
+    setIsExporting(true);
+    try {
+      openPdfView(await fetchAllRecords());
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "Could not export records.");
+    } finally {
+      setIsExporting(false);
+    }
+  }, []);
 
   const isLoading = state.kind === "loading";
   const total = state.kind === "ready" ? state.data.total : 0;
@@ -96,11 +170,21 @@ export function RecentSubmissions({ refreshToken }: { refreshToken: number }) {
         >
           Recent submissions
         </h2>
-        <p className="text-sm text-slate-500 dark:text-slate-400">
-          {state.kind === "ready"
-            ? `${total} record${total === 1 ? "" : "s"} total`
-            : " "}
-        </p>
+        <div className="flex items-center gap-3">
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            {state.kind === "ready"
+              ? `${total} record${total === 1 ? "" : "s"} total`
+              : " "}
+          </p>
+          <button
+            type="button"
+            onClick={() => void exportRecords()}
+            disabled={isLoading || total === 0 || isExporting}
+            className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 focus-visible:ring-4 focus-visible:ring-slate-400/20 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+          >
+            {isExporting ? "Preparing PDF..." : "Export PDF"}
+          </button>
+        </div>
       </div>
 
       <div aria-live="polite" className="mt-5">

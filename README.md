@@ -4,14 +4,14 @@ A small full-stack app for capturing and listing **biodata records** (name, cont
 date of birth, sex, height/weight, blood type, notes). It is deliberately built as
 three separable pieces so the whole thing runs with one `docker compose up`:
 
-- **`backend/`** — Python 3.12 / FastAPI service backed by Postgres 16
-  (SQLAlchemy 2.x, psycopg 3, Alembic, pydantic v2). Owns the data and the
+- **`backend/`** — Python 3.12 / FastAPI service backed by SQLite
+  (SQLAlchemy 2.x, Alembic, pydantic v2). Owns the data and the
   validation rules.
 - **`frontend/`** — Next.js 15 App Router UI (TypeScript strict, Tailwind CSS v4).
   The browser **never** talks to the Python service directly; the Next app proxies
   through its own route handlers under `/api/*`.
-- **`db`** — Postgres 16, one named volume, published on host port **5433** so it
-  does not collide with a Postgres you may already run locally.
+- **SQLite** — one named volume mounted at `/data`, so records survive
+  container recreation.
 
 The one behaviour worth calling out up front: **creating a record is replay-safe**.
 See [Idempotency](#idempotency-guarantee).
@@ -41,14 +41,13 @@ flowchart LR
 
     UI -->|"fetch + Idempotency-Key"| RH
     RH -->|"BACKEND_URL=http://backend:8000"| API
-    API -->|"DATABASE_URL (psycopg 3)"| PG
+    API -->|"DATABASE_URL (SQLite)"| PG
     MIG --> PG
 
     classDef box fill:#0d1117,stroke:#30363d,color:#e6edf3;
 ```
 
-Startup order is enforced by compose: `db` must pass its `pg_isready`
-healthcheck before `backend` starts, and `backend` must pass `/health` before
+Startup order is enforced by compose: `backend` must pass `/health` before
 `frontend` starts.
 
 ---
@@ -69,7 +68,7 @@ Then:
 | UI                | http://localhost:3000                   |
 | API health        | http://localhost:8000/health            |
 | API records       | http://localhost:8000/api/v1/bio-records|
-| Postgres          | `localhost:5433` (user/pass `biodata`)  |
+| SQLite database   | Persistent `sqlite_data` Compose volume |
 
 Useful targets:
 
@@ -91,17 +90,17 @@ sh -c "uv run alembic upgrade head && uv run python -m biodata"
 
 ## Local dev without Docker
 
-Start just Postgres, then run each service on the host:
+Start the backend database volume, then run each service on the host:
 
 ```bash
-docker compose up -d db          # Postgres on localhost:5433
+docker compose up -d backend     # SQLite is stored in the named volume
 ```
 
 **Backend** (cwd `backend/`, needs [uv](https://docs.astral.sh/uv/)):
 
 ```bash
 uv sync --frozen
-export DATABASE_URL=postgresql+psycopg://biodata:biodata@localhost:5433/biodata
+export DATABASE_URL=sqlite:///./biodata.db
 uv run alembic upgrade head
 uv run uvicorn biodata.app:app --reload --port 8000
 ```
@@ -134,13 +133,13 @@ and falls back to the defaults shown below.
 | variable             | service   | default                                                      | notes |
 |----------------------|-----------|--------------------------------------------------------------|-------|
 | `POSTGRES_USER`      | db        | `biodata`                                                    | |
-| `POSTGRES_PASSWORD`  | db        | `biodata`                                                    | change for anything non-local |
+| `POSTGRES_USER`        | db        | unused                                                       | |
 | `POSTGRES_DB`        | db        | `biodata`                                                    | |
-| `POSTGRES_HOST_PORT` | db        | `5433`                                                       | host port mapped to container `5432` |
-| `DATABASE_URL`       | backend   | `postgresql+psycopg://biodata:biodata@db:5432/biodata`       | SQLAlchemy URL; use `localhost:5433` off-compose |
-| `CORS_ORIGINS`       | backend   | `http://localhost:3000`                                      | comma separated |
+| `POSTGRES_PASSWORD`    | db        | unused                                                       | |
+| `DATABASE_URL`       | backend   | `sqlite:////data/biodata.db`                                 | SQLite file path in the Compose volume |
+| `POSTGRES_DB`          | db        | unused                                                       | |
 | `LOG_LEVEL`          | backend   | `INFO`                                                       | |
-| `BACKEND_HOST_PORT`  | backend   | `8000`                                                       | |
+| `POSTGRES_HOST_PORT` | db        | unused                                                       | |
 | `BACKEND_URL`        | frontend  | `http://backend:8000`                                        | **server-side only**, never exposed to the browser |
 | `FRONTEND_HOST_PORT` | frontend  | `3000`                                                       | |
 | `TEST_DATABASE_URL`  | tests/CI  | see `.env.example`                                           | database the backend test suite targets |

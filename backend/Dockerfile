@@ -45,6 +45,7 @@ ENV PYTHONUNBUFFERED=1 \
 
 RUN groupadd --system --gid 1001 app \
     && useradd --system --uid 1001 --gid app --create-home --home-dir /home/app app
+RUN mkdir /data && chown 1001:1001 /data
 
 WORKDIR /app
 

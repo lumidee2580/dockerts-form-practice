@@ -12,7 +12,6 @@ from collections.abc import Sequence
 
 import sqlalchemy as sa
 from alembic import op
-from sqlalchemy.dialects import postgresql
 
 revision: str = "0001"
 down_revision: str | None = None
@@ -33,9 +32,8 @@ def upgrade() -> None:
         "bio_records",
         sa.Column(
             "id",
-            postgresql.UUID(as_uuid=True),
+            sa.String(length=36),
             primary_key=True,
-            server_default=sa.text("gen_random_uuid()"),
             nullable=False,
         ),
         sa.Column("idempotency_key", sa.Text(), nullable=False),
@@ -54,21 +52,21 @@ def upgrade() -> None:
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
+            server_default=sa.text("CURRENT_TIMESTAMP"),
             nullable=False,
         ),
         sa.Column(
             "updated_at",
             sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
+            server_default=sa.text("CURRENT_TIMESTAMP"),
             nullable=False,
         ),
         sa.UniqueConstraint("idempotency_key", name="uq_bio_records_idempotency_key"),
         sa.CheckConstraint(
-            "char_length(full_name) BETWEEN 1 AND 200",
+            "length(full_name) BETWEEN 1 AND 200",
             name="ck_bio_records_full_name_length",
         ),
-        sa.CheckConstraint("phone IS NULL OR char_length(phone) <= 32", name="ck_bio_records_phone"),
+        sa.CheckConstraint("phone IS NULL OR length(phone) <= 32", name="ck_bio_records_phone"),
         sa.CheckConstraint("date_of_birth < CURRENT_DATE", name="ck_bio_records_dob_past"),
         sa.CheckConstraint(_in_list("sex", SEX_VALUES), name="ck_bio_records_sex"),
         sa.CheckConstraint("height_cm BETWEEN 30 AND 300", name="ck_bio_records_height_cm"),
@@ -78,15 +76,15 @@ def upgrade() -> None:
             name="ck_bio_records_blood_type",
         ),
         sa.CheckConstraint(
-            "allergies IS NULL OR char_length(allergies) <= 2000",
+            "allergies IS NULL OR length(allergies) <= 2000",
             name="ck_bio_records_allergies",
         ),
         sa.CheckConstraint(
-            "medical_notes IS NULL OR char_length(medical_notes) <= 5000",
+            "medical_notes IS NULL OR length(medical_notes) <= 5000",
             name="ck_bio_records_medical_notes",
         ),
         sa.CheckConstraint(
-            "country IS NULL OR country ~ '^[A-Z]{2}$'",
+            "country IS NULL OR country GLOB '[A-Z][A-Z]'",
             name="ck_bio_records_country",
         ),
     )
